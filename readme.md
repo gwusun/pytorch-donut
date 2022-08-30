@@ -3,7 +3,7 @@
 ## Introduction
 We use the `cpu4.csv` in [NetManAIOps/donut](https://github.com/NetManAIOps/donut/tree/master/sample_data) as a test dataset. The result in different epochs are as follows:
 
-1 epoch:
+1 epoch: 
 ![](./imgs/epoch_1.png)
 
 10 epochs:
@@ -19,5 +19,3 @@ We use the `cpu4.csv` in [NetManAIOps/donut](https://github.com/NetManAIOps/donu
 1. Clone this repository
 2. cd pytorch-donut   
 2. `python main.py`
-
-
