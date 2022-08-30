@@ -24,7 +24,6 @@ def print_metrics(y_true, scores):
     scores_ = (scores - _min) / (_max - _min + 1e-8)
     fpr, tpr, thresholds = sklearn.metrics.roc_curve(y_true, scores)
     print("auc", sklearn.metrics.auc(fpr, tpr))
-
     pr, re, thrs = precision_recall_curve(y_true, scores_)
     fs = 2.0 * pr * re / np.clip(pr + re, a_min=1e-4, a_max=None)
     print("best F1 score", max(fs))
@@ -187,6 +186,51 @@ def plot_predict(origin_x, origin_y, ret_x_bar, ret_x_bar_std, ret_scores):
     plt.show()
 
 
+def modified_score(y_true, score):
+    """
+    Modified metrics;that is, identify the anomaly by segment, not a point.
+    If any point in an anomaly segment in the ground truth can be detected by a chosen threshold,
+    we say this segment is detected correctly, and all points in this segment are treated as if they can be detected
+    by this threshold.
+    Examples
+    ----------
+    y_true =    [1,     1,      1,       0, 0, 0,   1,    1,      1,      1,     0,    1]
+    score  =    [0.1,  0.3,     0.1,     0, 0, 0,   0,    0,      0,      0.5,   0,    0]
+
+    modified =  [0.3,  0.3,     0.3,     0, 0, 0,   0.5,  0.5,   0.5,     0.5,   0,    0]
+    Parameters
+    ----------
+    score: 1-D np.array
+    y_true: 1-D np.array
+
+    Returns
+    -------
+    1-D np.array
+
+    """
+
+    y_true = np.asarray(y_true, dtype=float)
+    score = np.asarray(score, dtype=float)
+
+    assert y_true.shape[0] == score.shape[0]
+    modified_score = score.copy()
+    anomaly_index = np.argwhere(y_true == 1)
+    for i in anomaly_index:
+        index = i[0]
+
+        # forward to find time spand
+        time_span=[]
+        cur_index=index
+        while True:
+            if y_true[cur_index+1]==1.:
+                cur_index=cur_index+1
+                time_span.append(cur_index)
+            else:
+                break
+
+        modified_score[time_span]=[np.min(score[time_span]) for i in range(len(time_span)) ]
+    return modified_score
+
 class Donut:
     def __init__(self, lr=0.001,
                  weight_decay=0.001,
@@ -344,4 +388,4 @@ class Donut:
             # scores = torch.cat((torch.ones(self._vae.win - 1) * torch.min(scores), scores), dim=0)
             # todo 使用segment 评判， 需要将时序恢复成原来的样本，而不是滑动窗口取到的片段
             assert len(ret_scores) == len(test_dataset)
-            return ret_scores, ret_x_bar_mean, ret_x_bar_std
+            return ret_scores.detach().numpy(),modified_score(test_y[:,-1],ret_scores.detach().numpy()),ret_x_bar_mean, ret_x_bar_std
