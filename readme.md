@@ -1,4 +1,4 @@
-✨ Am implement for [Donut](ttps://github.com/NetManAIOps/donut), a univariate time series anomaly detection algorithm,  with pytorch .✨ Reference to [flower-kyo/pytorch-donut](https://github.com/flower-kyo/pytorch-donut).
+✨ Am implement for [Donut](https://github.com/NetManAIOps/donut), a univariate time series anomaly detection algorithm,  with pytorch .✨ Reference to [flower-kyo/pytorch-donut](https://github.com/flower-kyo/pytorch-donut).
 
 ## Introduction
 We use the `cpu4.csv` in [NetManAIOps/donut](https://github.com/NetManAIOps/donut/tree/master/sample_data) as a test dataset. The result in different epochs are as follows:
