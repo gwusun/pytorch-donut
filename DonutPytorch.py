@@ -18,15 +18,14 @@ def print_metrics(y_true, scores):
     :return:
     """
     # Negative the scores, because it is the log probability
-    scores=-scores
+    scores = -scores
     _min = np.min(scores)
     _max = np.max(scores)
     scores_ = (scores - _min) / (_max - _min + 1e-8)
     fpr, tpr, thresholds = sklearn.metrics.roc_curve(y_true, scores)
-    print("auc", sklearn.metrics.auc(fpr, tpr))
     pr, re, thrs = precision_recall_curve(y_true, scores_)
     fs = 2.0 * pr * re / np.clip(pr + re, a_min=1e-4, a_max=None)
-    print("best F1 score", max(fs))
+    print(f"Auc: {sklearn.metrics.auc(fpr,tpr)}, best F1 score {max(fs)}\n")
     return max(fs)
 
 
@@ -51,7 +50,6 @@ def slide_sampling(x, y, slide_win):
     ret_y = []
     for i in range(len(x) - slide_win + 1):
         ret_x.append(x[i: i + slide_win])
-        # ret_y.append(y[i + slide_win - 1])
         ret_y.append(y[i: i + slide_win])
     ret_x = np.array(ret_x)
     ret_y = np.array(ret_y)
@@ -84,7 +82,7 @@ class VAE(nn.Module):
         super(VAE, self).__init__()
 
         # Number of sample for calculating reconstruction probability
-        self.n_l_samples=num_l_samples
+        self.n_l_samples = num_l_samples
         self.win = window_size
         self.encoder = nn.Sequential(
             nn.Linear(window_size, number_of_neural_per_layer),
@@ -194,10 +192,10 @@ def modified_score(y_true, score):
     by this threshold.
     Examples
     ----------
-    y_true =    [1,     1,      1,       0, 0, 0,   1,    1,      1,      1,     0,    1]
-    score  =    [0.1,  0.3,     0.1,     0, 0, 0,   0,    0,      0,      0.5,   0,    0]
+    y_true =    [1,      1,      1,       0, 0, 0,   1,    1,      1,      1,     0,    1]
+    score  =    [-0.1,  -0.3,   -0.1,     0, 0, 0,   0,    0,      0,     -0.5,   0,    0]
 
-    modified =  [0.3,  0.3,     0.3,     0, 0, 0,   0.5,  0.5,   0.5,     0.5,   0,    0]
+    modified =  [-0.3,  -0.3,   -0.3,     0, 0, 0,  -0.5,  -0.5,  -0.5,   -0.5,   0,    0]
     Parameters
     ----------
     score: 1-D np.array
@@ -213,26 +211,31 @@ def modified_score(y_true, score):
     score = np.asarray(score, dtype=float)
 
     assert y_true.shape[0] == score.shape[0]
+    assert len(y_true.shape) == 1
+    assert len(score.shape) == 1
     modified_score = score.copy()
-    anomaly_index = np.argwhere(y_true == 1)
-    for i in anomaly_index:
-        index = i[0]
 
-        # forward to find time spand
-        time_span=[]
-        cur_index=index
-        while True:
-            if y_true[cur_index+1]==1.:
-                cur_index=cur_index+1
-                time_span.append(cur_index)
-            else:
-                break
-
-        modified_score[time_span]=[np.min(score[time_span]) for i in range(len(time_span)) ]
+    time_spans = []
+    size_of_y = len(y_true)
+    _s = 0
+    _n = 0
+    for i in range(len(y_true)):
+        if y_true[i] == 1:
+            _n = i + 1
+            if i == size_of_y - 1:
+                time_spans.append(np.arange(start=_s, stop=_n, step=1))
+        else:
+            if _n > _s:
+                time_spans.append(np.arange(start=_s, stop=_n, step=1))
+            _s = i + 1
+    for ts in time_spans:
+        modified_score[ts] = np.repeat(np.min(modified_score[ts]), len(ts))
     return modified_score
 
+
 class Donut:
-    def __init__(self, lr=0.001,
+    def __init__(self,
+                 lr=0.001,
                  weight_decay=0.001,
                  window_size=120,
                  latent_dim=3,
@@ -244,13 +247,12 @@ class Donut:
                  gamma=0.1,
                  n_epoch=30,
                  ):
-        self._batch_size=batch_size
-
+        self._batch_size = batch_size
         # Period of learning rate decay. https://pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.StepLR.html
-        self._opti_step_size=step_size
-        self._epoch=n_epoch
+        self._opti_step_size = step_size
+        self._epoch = n_epoch
         # Multiplicative factor of learning rate decay. Default: 0.1.
-        self._opti_gamma=gamma
+        self._opti_gamma = gamma
         self._vae = VAE(window_size=window_size,
                         latent_dim=latent_dim,
                         number_of_neural_per_layer=number_of_neural_per_layer,
@@ -302,34 +304,45 @@ class Donut:
         return m_elbo
 
     def fit(self, x, y, valid_x=None, valid_y=None):
-        '''
-        如果在实际应用中没有标签， 可以把大多数样本当做正常样本， 即把y全部设置为0
-        :param x:(batch, window_size)
-        :param y:(batch, window_size)
-        :param n_epoch: int
-        :param valid_x: (batch, window_size)
-        :param valid_y: (batch, window_size)
-        :return:
-        '''
+        """
+        :param x:training set, (n_samples, sliding_window)
+        :param y:testing set,  (n_samples, sliding_window),  如果在实际应用中没有标签， 可以把大多数样本当做正常样本， 即把y全部设置为0
+        :param valid_x:  (n_samples, sliding_window)
+        :param valid_y:  (n_samples, sliding_window)
+        Parameters
+        ----------
+        x
+        y
+        valid_x
+        valid_y
+
+        Returns
+        -------
+
+        """
         # todo missing injection
         # Sets the module in training mode, so we can train it.
         self._vae.train(mode=True)
         train_dataset = TsDataset(x, y)
-        train_iter = torch.utils.data.DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True, num_workers=0)
+        train_iter = torch.utils.data.DataLoader(train_dataset, batch_size=self._batch_size, shuffle=True,
+                                                 num_workers=0)
+        valid_iter = None
+        loss=None
 
         if valid_x is not None:
             valid_dataset = TsDataset(valid_x, valid_y)
-            valid_iter = torch.utils.data.DataLoader(valid_dataset, batch_size=self._batch_size, shuffle=False, num_workers=0)
+            valid_iter = torch.utils.data.DataLoader(valid_dataset, batch_size=self._batch_size, shuffle=False,
+                                                     num_workers=0)
 
         optimizer = self.optimizer
         lr_scheduler = StepLR(optimizer, step_size=self._opti_step_size, gamma=self._opti_gamma)
         for epoch in range(self._epoch):
             for train_x, train_y in train_iter:
                 optimizer.zero_grad()
-                z, x_bar_miu, x_bar_std, z_miu, z_std = self._vae(train_x)  # 前向传播
-                l = self.m_elbo_loss(train_x, train_y, z, x_bar_miu, x_bar_std, z_miu, z_std)
+                z, x_bar_miu, x_bar_std, z_miu, z_std = self._vae.forward(train_x)  # 前向传播
+                loss = self.m_elbo_loss(train_x, train_y, z, x_bar_miu, x_bar_std, z_miu, z_std)
                 # 计算loss对每个参数的梯度
-                l.backward()
+                loss.backward()
                 # 更新每个参数： a -= learning_rate * a.grad
                 optimizer.step()
             lr_scheduler.step()
@@ -342,16 +355,26 @@ class Donut:
             #                 "loss": l.item()}, "./model_parameters/epoch{}-loss{:.2f}.tar".format(epoch, l.item()))
 
             # 验证集
-            if epoch % 50 == 0 and valid_x is not None:
+            if epoch % 10 == 0 and valid_x is not None:
                 with torch.no_grad():
                     for v_x, v_y in valid_iter:
-                        z, x_bar_miu, x_bar_std, z_miu, z_std = self._vae(v_x)
+                        z, x_bar_miu, x_bar_std, z_miu, z_std = self._vae.forward(v_x)
                         v_l = self.m_elbo_loss(v_x, v_y, z, x_bar_miu, x_bar_std, z_miu, z_std)
-                    print("train loss %.4f,  valid loss %.4f" % (l.item(), v_l.item()))
+                    print("train loss %.4f,  valid loss %.4f" % (loss.item(), v_l.item()))
             else:
-                print("epoch",epoch,"loss", l.item(), "  lr,", lr_scheduler.get_last_lr())
+                print("epoch", epoch, "loss", loss.item(), "  lr,", lr_scheduler.get_last_lr())
 
     def predict(self, test_x, test_y):
+        """
+        Predict
+        Parameters
+        ----------
+        test_x: Testing set of shape (n_samples,sliding_windows)
+        test_y: Testing labels of shape (n_samples,sliding_windows)
+        Returns
+        -------
+        ret_scores,ret_modified_score, ret_x_bar_mean, ret_x_bar_std
+        """
         # Sets the module in evaluation mode so we can predict.
         # It is actually calling the function: self.train(False)
         self._vae.eval()  # equal to self.train(False)
@@ -386,6 +409,7 @@ class Donut:
             ret_x_bar_mean = torch.cat(ret_x_bar_mean)
             ret_x_bar_std = torch.cat(ret_x_bar_std)
             # scores = torch.cat((torch.ones(self._vae.win - 1) * torch.min(scores), scores), dim=0)
-            # todo 使用segment 评判， 需要将时序恢复成原来的样本，而不是滑动窗口取到的片段
+            # todo 使用 segment 评判， 需要将时序恢复成原来的样本，而不是滑动窗口取到的片段
             assert len(ret_scores) == len(test_dataset)
-            return ret_scores.detach().numpy(),modified_score(test_y[:,-1],ret_scores.detach().numpy()),ret_x_bar_mean, ret_x_bar_std
+            ret_modified_score=modified_score(test_y[:, -1],  ret_scores.detach().numpy())
+            return ret_scores.detach().numpy(),ret_modified_score, ret_x_bar_mean,ret_x_bar_std
